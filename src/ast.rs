@@ -1,4 +1,71 @@
-use core::fmt;
+use core::{fmt, iter};
+
+/// A range literal in the RollKit expression AST.
+///
+/// It's defined by an inclusive start point, an inclusive end point, and an optional step value.
+/// If the step is not provided, it defaults to 1.
+///
+/// The range can be ascending (start <= end) or descending (start > end). The sign of the step is
+/// automatically adjusted based on the direction of the range.
+///
+/// # Example
+///
+/// ```
+/// # use rollkit::parsing::RangeLiteral;
+/// assert_eq!(RangeLiteral { start: 1, end: 5, step: Some(2) }.to_vec(), vec![1, 3, 5]);
+/// assert_eq!(RangeLiteral { start: 5, end: 1, step: Some(2) }.to_vec(), vec![5, 3, 1]);
+/// assert_eq!(RangeLiteral { start: 1, end: 5, step: None }.to_vec(), vec![1, 2, 3, 4, 5]);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RangeLiteral {
+    /// The start of the range, inclusive.
+    pub start: i64,
+    /// The end of the range, inclusive.
+    pub end: i64,
+    /// The step of the range. If `None`, defaults to 1.
+    pub step: Option<i64>,
+}
+
+impl RangeLiteral {
+    /// Returns an iterator over the range.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use rollkit::parsing::RangeLiteral;
+    /// let range = RangeLiteral { start: 1, end: 5, step: Some(2) };
+    /// let collected: Vec<i64> = range.to_iter().collect();
+    /// assert_eq!(collected, vec![1, 3, 5]);
+    /// ```
+    pub fn to_iter(&self) -> impl Iterator<Item = i64> {
+        let inc = self.end >= self.start;
+        let step = self.step.map(i64::wrapping_abs).unwrap_or(1);
+        let step = if inc { step } else { step.wrapping_neg() };
+
+        iter::successors(Some(self.start), move |&cur| {
+            let next = cur.wrapping_add(step);
+            if (inc && (next > self.end || next < cur)) || (!inc && (next < self.end || next > cur))
+            {
+                None
+            } else {
+                Some(next)
+            }
+        })
+    }
+
+    /// Collects the range into a vector.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use rollkit::parsing::RangeLiteral;
+    /// let range = RangeLiteral { start: 1, end: 5, step: Some(2) };
+    /// assert_eq!(range.to_vec(), vec![1, 3, 5]);
+    /// ```
+    pub fn to_vec(&self) -> Vec<i64> {
+        self.to_iter().collect()
+    }
+}
 
 /// A literal value in the RollKit expression AST.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -8,17 +75,13 @@ pub enum Literal {
     /// An explicit list literal e.g., `{1, 2, 3}`.
     List(Vec<i64>),
     /// A range list literal e.g., `[1, 5, 2]`.
-    Range {
-        start: i64,
-        end: i64,
-        step: Option<i64>,
-    },
+    Range(RangeLiteral),
 }
 
 /// A binary operator in the RollKit expression AST.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BinaryOperator {
-    // Dice operations
+    // Dice operators
     /// The dice roll operator `d`.
     DiceRoll,
     /// The keep highest operator `kh`.
@@ -30,7 +93,7 @@ pub enum BinaryOperator {
     /// The drop lowest operator `dl`.
     DropLowest,
 
-    // Arithmetic operations
+    // Arithmetic operators
     /// The multiplication operator `*`.
     Multiplication,
     /// The addition operator `+`.
@@ -38,7 +101,7 @@ pub enum BinaryOperator {
     /// The subtraction operator `-`.
     Subtraction,
 
-    // Comparison operations
+    // Comparison operators
     /// The equal operator `==`.
     Equal,
     /// The not equal operator `!=`.
@@ -121,22 +184,22 @@ impl fmt::Display for BinaryOperator {
 }
 
 /// A RollKit expression.
-/// 
+///
 /// It's an AST node representing one of the possible expressions types in RollKit: literals,
 /// binary operations, function calls, and strong lists.
-/// 
+///
 /// # Creation
-/// 
+///
 /// [`Expr`]s are typically created by [parsing](crate::parse) RollKit expressions from strings.
 /// They can (naturally) also be constructed manually.
-/// 
+///
 /// # Usage
-/// 
-/// Expressions can be evaluated using the evaluation functions ([`eval`](crate::eval) and 
+///
+/// Expressions can be evaluated using the evaluation functions ([`eval`](crate::eval) and
 /// [`eval_with`](crate::eval_with)) or traversed using the [visitor pattern](ExprVisitor).
-/// 
+///
 /// # Example
-/// 
+///
 /// ```
 /// # use rollkit::{parsing::Expr, parse, eval};
 /// let expr: Expr = parse("2d6 + 3").unwrap();
@@ -169,9 +232,9 @@ pub enum Expr {
 
 impl Expr {
     /// Formats this RollKit expression in a single line, with parentheses to indicate precedence.
-    /// 
+    ///
     /// This is a wrapper around the [InlineFormatter](crate::parsing::InlineFormatter).
-    /// 
+    ///
     /// # Example
     ///
     /// ```
@@ -187,7 +250,7 @@ impl Expr {
 }
 
 /// Trait for visitors traversing RollKit expressions using the visitor pattern.
-/// 
+///
 /// # Example
 /// ```
 /// # use rollkit::{parsing::{ExprVisitor, InlineFormatter}, parse};
@@ -222,9 +285,9 @@ pub trait ExprVisitor {
 
 /// A formatter that formats RollKit expressions in a single line, with parentheses to indicate
 /// precedence.
-/// 
+///
 /// # Example
-/// 
+///
 /// ```
 /// # use rollkit::{parsing::{ExprVisitor, InlineFormatter}, parse};
 /// let expr = parse("2d6 + 3").unwrap();
@@ -247,7 +310,7 @@ impl ExprVisitor for InlineFormatter {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            Literal::Range { start, end, step } => {
+            Literal::Range(RangeLiteral { start, end, step }) => {
                 if let Some(s) = step {
                     format!("[{}, {}, {}]", start, end, s)
                 } else {

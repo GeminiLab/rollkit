@@ -1,4 +1,4 @@
-use super::ast::{BinaryOperator, Expr, Literal};
+use crate::ast::{BinaryOperator, Expr, Literal, RangeLiteral};
 
 use chumsky::{
     pratt::{Associativity, infix, left, right},
@@ -9,9 +9,11 @@ type ParserInput<'a> = &'a str;
 type ParserError<'a> = extra::Err<Rich<'a, char>>;
 
 /// Parse a RollKit expression from a string input.
-/// 
+///
+/// For the syntax and supported expressions, see the [crate-level documentation](crate).
+///
 /// # Examples
-/// 
+///
 /// ```
 /// # use rollkit::{parse, parsing::*};
 /// assert_eq!(parse("2d6 + 3"), Ok(Expr::BinaryOp {
@@ -23,7 +25,7 @@ type ParserError<'a> = extra::Err<Rich<'a, char>>;
 ///     op: BinaryOperator::Addition,
 ///     right: Box::new(Expr::Literal(Literal::Int(3))),
 /// }));
-/// 
+///
 /// assert!(parse("4d{1,2,3}kh2").is_ok());
 /// assert!(parse("[1, 10, 2] + 5").is_ok());
 /// assert!(parse("max(3d6)").is_ok());
@@ -74,7 +76,7 @@ fn range_list_parser<'a>() -> impl Parser<'a, ParserInput<'a>, Literal, ParserEr
         .then(integer.clone())
         .then(just(',').padded().ignore_then(integer.clone()).or_not())
         .delimited_by(just('[').padded(), just(']').padded())
-        .map(|((start, end), step)| Literal::Range { start, end, step })
+        .map(|((start, end), step)| Literal::Range(RangeLiteral { start, end, step }))
         .labelled("range list")
 }
 
@@ -158,7 +160,7 @@ fn expression_parser<'a>() -> impl Parser<'a, ParserInput<'a>, Expr, ParserError
             })
         };
 
-        let expr = atom.clone().pratt((
+        atom.clone().pratt((
             binary_op_to_pratt(BinaryOperator::DiceRoll, right),
             binary_op_to_pratt(BinaryOperator::KeepHighest, left),
             binary_op_to_pratt(BinaryOperator::KeepLowest, left),
@@ -173,9 +175,7 @@ fn expression_parser<'a>() -> impl Parser<'a, ParserInput<'a>, Expr, ParserError
             binary_op_to_pratt(BinaryOperator::LessEqual, left),
             binary_op_to_pratt(BinaryOperator::GreaterThan, left),
             binary_op_to_pratt(BinaryOperator::GreaterEqual, left),
-        )).padded();
-
-        expr
+        )).padded()
     })
     .then_ignore(end())
 }

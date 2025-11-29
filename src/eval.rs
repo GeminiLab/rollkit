@@ -5,7 +5,7 @@ use rand::{
     seq::{IndexedRandom, SliceRandom},
 };
 
-use crate::ast::{BinaryOperator, Expr, ExprVisitor, Literal};
+use crate::ast::{BinaryOperator, Expr, ExprVisitor, Literal, RangeLiteral};
 
 /// The result of evaluating a [RollKit expression](Expr).
 ///
@@ -13,19 +13,19 @@ use crate::ast::{BinaryOperator, Expr, ExprVisitor, Literal};
 /// functions ([`eval`], [`eval_with`]), and can be converted to lists
 /// ([`into_list`](Value::into_list)) or integers ([`sum`](Value::sum)). [`i64`] is used as the
 /// underlying integer type.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// # use rollkit::{eval, parse, Value};
 /// // an expression that results in a list
 /// let expr_list = parse("3d6").unwrap();
 /// // an expression that results in an integer
 /// let expr_int = parse("5 + 10").unwrap();
-/// 
+///
 /// let value_list = eval(&expr_list).unwrap();
 /// let value_int = eval(&expr_int).unwrap();
-/// 
+///
 /// assert!(value_list.is_list());
 /// assert!(value_int.is_integer());
 /// ```
@@ -113,14 +113,14 @@ impl Value {
 impl fmt::Display for Value {
     /// Formats the value for display. For integers, it displays the integer. For lists, it displays
     /// the list in curly braces.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// # use rollkit::Value;
     /// let int_value = Value::Integer(5);
     /// let list_value = Value::List(vec![1, 2, 3]);
-    /// 
+    ///
     /// assert_eq!(format!("{}", int_value), "5");
     /// assert_eq!(format!("{}", list_value), "{1, 2, 3}");
     /// ```
@@ -143,22 +143,6 @@ impl fmt::Display for Value {
     }
 }
 
-/// Returns an iterator over the range defined by start, end, and step.
-pub fn range_to_iter(start: i64, end: i64, step: Option<i64>) -> impl Iterator<Item = i64> {
-    let inc = end >= start;
-    let step = step.map(i64::wrapping_abs).unwrap_or(1);
-    let step = if inc { step } else { step.wrapping_neg() };
-
-    std::iter::successors(Some(start), move |&cur| {
-        let next = cur.wrapping_add(step);
-        if (inc && (next > end || next < cur)) || (!inc && (next < end || next > cur)) {
-            None
-        } else {
-            Some(next)
-        }
-    })
-}
-
 /// The internal representation of a list, which can be either a concrete list of integers
 /// or a range defined by a start, end, and optional step. Used during evaluation for efficiency.
 #[derive(Debug, Clone)]
@@ -166,11 +150,7 @@ pub enum ListInner {
     /// A concrete list of integers.
     List(Vec<i64>),
     /// A range defined by start, end, and optional step.
-    Range {
-        start: i64,
-        end: i64,
-        step: Option<i64>,
-    },
+    Range(RangeLiteral),
 }
 
 impl ListInner {
@@ -178,7 +158,7 @@ impl ListInner {
     pub fn sum(&self) -> i64 {
         match self {
             ListInner::List(lst) => lst.iter().sum(),
-            ListInner::Range { start, end, step } => range_to_iter(*start, *end, *step).sum(),
+            ListInner::Range(range) => range.to_iter().sum(),
         }
     }
 
@@ -191,7 +171,7 @@ impl ListInner {
     pub fn into_vec(self) -> Vec<i64> {
         match self {
             ListInner::List(lst) => lst,
-            ListInner::Range { start, end, step } => range_to_iter(start, end, step).collect(),
+            ListInner::Range(range) => range.to_iter().collect(),
         }
     }
 
@@ -199,14 +179,14 @@ impl ListInner {
     pub fn sample<R: Rng + ?Sized>(&self, rng: &mut R, count: i64) -> Vec<i64> {
         let mut sampler: Box<dyn FnMut() -> i64> = match self {
             ListInner::List(lst) => Box::new(|| *lst.choose(rng).unwrap()),
-            ListInner::Range { start, end, step } => {
+            ListInner::Range(RangeLiteral { start, end, step }) => {
                 if step.is_none_or(|step| step.wrapping_abs() == 1) {
                     let range = if end >= start {
                         *start..=*end
                     } else {
                         *end..=*start
                     };
-                    Box::new(move || rng.random_range(range.clone()).into())
+                    Box::new(move || rng.random_range(range.clone()))
                 } else {
                     let values: Vec<i64> = self.clone_vec();
                     Box::new(move || *values.choose(rng).unwrap())
@@ -390,7 +370,7 @@ fn eval_keep_drop_op<R: Rng + ?Sized>(
     vec.shuffle(rng);
 
     Ok(InnerValue::List {
-        strong: strong,
+        strong,
         inner: ListInner::List(vec),
     })
 }
@@ -433,11 +413,7 @@ fn eval_arith_cmp_op(
                 });
             }
 
-            let vec: Vec<i64> = lvec
-                .into_iter()
-                .zip(rvec.into_iter())
-                .map(|(l, r)| op(l, r))
-                .collect();
+            let vec: Vec<i64> = lvec.into_iter().zip(rvec).map(|(l, r)| op(l, r)).collect();
 
             Ok(InnerValue::List {
                 strong: true,
@@ -467,13 +443,9 @@ where
                 strong: false,
                 inner: ListInner::List(lst.clone()),
             },
-            Literal::Range { start, end, step } => InnerValue::List {
+            Literal::Range(range) => InnerValue::List {
                 strong: false,
-                inner: ListInner::Range {
-                    start: *start,
-                    end: *end,
-                    step: *step,
-                },
+                inner: ListInner::Range(*range),
             },
         })
     }
@@ -486,11 +458,11 @@ where
             BinaryOperator::DiceRoll => {
                 let count = left.assert_integer()?;
                 let sides = match right {
-                    InnerValue::Integer(n) => ListInner::Range {
+                    InnerValue::Integer(n) => ListInner::Range(RangeLiteral {
                         start: 1,
                         end: n,
                         step: None,
-                    },
+                    }),
                     InnerValue::List { inner, .. } => inner,
                 };
 
