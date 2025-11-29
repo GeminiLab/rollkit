@@ -1,7 +1,17 @@
 [package]
 name = "rollkit"
-version = "0.1.0"
-edition = "2024"
+description = "A dice-rolling expression parser and evaluator library for Rust."
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+include = [
+    "README.md",
+    "LICENSE",
+    "Cargo.toml",
+    "src/**/*",
+]
 
 [dependencies]
 chumsky.workspace = true
@@ -15,6 +25,13 @@ std = ["chumsky/std", "rand/thread_rng"]
 members = [
     "rollkit_repl",
 ]
+
+[workspace.package]
+authors = ["aarkegz <aarkegz@gmail.com>"]
+license = "MIT"
+edition = "2024"
+version = "0.1.0"
+repository = "https://github.com/GeminiLab/rollkit/"
 
 [workspace.dependencies]
 chumsky = { version = "0.11.2", default-features = false, features = ["pratt"] }

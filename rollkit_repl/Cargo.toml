@@ -1,7 +1,11 @@
 [package]
 name = "rollkit_repl"
-version = "0.1.0"
-edition = "2024"
+description = "A REPL for the RollKit dice-rolling expression parser and evaluator library."
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
 
 [dependencies]
 ariadne = "0.6.0"
