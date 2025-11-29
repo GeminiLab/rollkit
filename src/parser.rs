@@ -1,3 +1,8 @@
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+#[cfg(not(feature = "std"))]
+use alloc::{boxed::Box, format, string::ToString, vec, vec::Vec};
+
 use crate::ast::{BinaryOperator, Expr, Literal, RangeLiteral};
 
 use chumsky::{

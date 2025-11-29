@@ -5,7 +5,11 @@ edition = "2024"
 
 [dependencies]
 chumsky.workspace = true
-rand = "0.9.2"
+rand = { version = "0.9.2", default-features = false, features = ["std_rng"] }
+
+[features]
+default = ["std"]
+std = ["chumsky/std", "rand/thread_rng"]
 
 [workspace]
 members = [
@@ -13,4 +17,4 @@ members = [
 ]
 
 [workspace.dependencies]
-chumsky = { version = "0.11.2", features = ["pratt"] }
+chumsky = { version = "0.11.2", default-features = false, features = ["pratt"] }

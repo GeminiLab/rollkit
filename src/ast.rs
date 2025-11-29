@@ -1,3 +1,13 @@
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+#[cfg(not(feature = "std"))]
+use alloc::{
+    boxed::Box,
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
+
 use core::{fmt, iter};
 
 /// A range literal in the RollKit expression AST.

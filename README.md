@@ -21,6 +21,45 @@ Explanation:
       Literal: 2 (Integer)
 ```
 
+For usage, see [Quick Start](#quick-start). For detailed syntax, see [Syntax](#syntax).
+
+## Quick Start
+
+### Library Usage
+
+To use RollKit in Rust, use `parse` and `eval` to parse and evaluate expressions:
+
+```rust
+use rollkit::{parse, eval};
+
+let expr = parse("4d6kh3 + 2").unwrap();
+let result = eval(&expr);
+println!("Result: {:?}", result);
+```
+
+You can use `eval_with` to specify a custom RNG:
+
+```rust
+use rand::{SeedableRng, rngs::StdRng};
+use rollkit::{parse, eval_with};
+
+let mut rng = StdRng::from_os_rng();
+let expr = parse("4d6kh3 + 2").unwrap();
+let result = eval_with(&expr, &mut rng).unwrap(); 
+println!("Result: {:?}", result);
+```
+
+### REPL
+
+RollKit comes with a command-line REPL tool for interactive dice rolling. To start the REPL, run:
+
+```bash
+cargo run -p rollkit_repl
+```
+
+You can enter RollKit expressions directly, and use commands `:explain <expr>` to see the parsed structure of an expression. Use `:help` to see all available commands.
+
+
 ## Syntax
 
 RollKit expressions are math-like expressions composed of values and operators described below. Programmers will find the syntax similar to expressions in many programming languages, with some additions for dice rolling.
@@ -69,40 +108,6 @@ Parentheses `()` can be used to group expressions and override the default prece
 
 Function calls are also supported, with the syntax: `functionName(arg1, arg2, ...)`, where `functionName` is the name of the function and `arg1`, `arg2`, etc. are the arguments passed to the function.
 
-## Library Usage
-
-To use RollKit in Rust, use `parse` and `eval` to parse and evaluate expressions:
-
-```rust
-use rollkit::{parse, eval};
-
-let expr = parse("4d6kh3 + 2").unwrap();
-let result = eval(&expr);
-println!("Result: {:?}", result);
-```
-
-You can use `eval_with` to specify a custom RNG:
-
-```rust
-use rand::{SeedableRng, rngs::StdRng};
-use rollkit::{parse, eval_with};
-
-let mut rng = StdRng::from_os_rng();
-let expr = parse("4d6kh3 + 2").unwrap();
-let result = eval_with(&expr, &mut rng).unwrap(); 
-println!("Result: {:?}", result);
-```
-
-## REPL
-
-RollKit comes with a command-line REPL tool for interactive dice rolling. To start the REPL, run:
-
-```bash
-cargo run -p rollkit_repl
-```
-
-You can enter RollKit expressions directly, and use commands `:explain <expr>` to see the parsed structure of an expression. Use `:help` to see all available commands.
-
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License.

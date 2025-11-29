@@ -1,9 +1,17 @@
-use std::fmt;
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+#[cfg(not(feature = "std"))]
+use alloc::{boxed::Box, vec, vec::Vec};
+
+use core::fmt;
 
 use rand::{
-    Rng, rng,
+    Rng,
     seq::{IndexedRandom, SliceRandom},
 };
+
+#[cfg(feature = "std")]
+use rand::rng;
 
 use crate::ast::{BinaryOperator, Expr, ExprVisitor, Literal, RangeLiteral};
 
@@ -258,15 +266,36 @@ pub enum EvalError {
     /// A list was expected but a different type was found.
     ListExpected,
     /// Tried to keep more elements than available in the list.
-    KeepTooMany { available: usize, requested: i64 },
+    KeepTooMany {
+        /// Number of elements available in the list.
+        available: usize,
+        /// Number of elements requested to keep.
+        requested: i64,
+    },
     /// Tried to drop more elements than available in the list.
-    DropTooMany { available: usize, requested: i64 },
+    DropTooMany {
+        /// Number of elements available in the list.
+        available: usize,
+        /// Number of elements requested to drop.
+        requested: i64,
+    },
     /// Tried to keep fewer elements than zero.
-    KeepTooLess { requested: i64 },
+    KeepTooLess {
+        /// Number of elements requested to keep.
+        requested: i64,
+    },
     /// Tried to drop fewer elements than zero.
-    DropTooLess { requested: i64 },
+    DropTooLess {
+        /// Number of elements requested to drop.
+        requested: i64,
+    },
     /// The lengths of two lists did not match.
-    ListMismatch { left_len: usize, right_len: usize },
+    ListMismatch {
+        /// Length of the list on the left side.
+        left_len: usize,
+        /// Length of the list on the right side.
+        right_len: usize,
+    },
 }
 
 impl fmt::Display for EvalError {
@@ -510,11 +539,37 @@ where
 }
 
 /// Evaluates a RollKit expression and returns the result.
+///
+/// The expression is evaluated using the default thread-local random number generator
+/// [`rand::rng`], and therefore requires the standard library. See [`eval_with`] for details and
+/// customization.
+///
+/// # Examples
+///
+/// ```
+/// # use rollkit::{eval, parse, Value};
+/// let expr = parse("4d6kh3 + 2").unwrap();
+/// let result = eval(&expr).unwrap();
+/// println!("Result: {}", result);
+/// ```
+#[cfg(feature = "std")]
 pub fn eval(expr: &Expr) -> Result<Value, EvalError> {
     eval_with(expr, &mut rng())
 }
 
 /// Evaluates a RollKit expression with a provided random number generator and returns the result.
+///
+/// # Examples
+///
+/// ```
+/// # use rand::{SeedableRng, rngs::StdRng};
+/// # use rollkit::{eval_with, parse};
+///
+/// let mut rng = StdRng::from_os_rng();
+/// let expr = parse("4d6kh3 + 2").unwrap();
+/// let result = eval_with(&expr, &mut rng).unwrap();
+/// println!("Result: {:?}", result);
+/// ```
 pub fn eval_with<R: Rng + ?Sized>(expr: &Expr, rng: &mut R) -> Result<Value, EvalError> {
     let mut visitor = EvalVisitor { rng };
     visitor.visit_expr(expr).map(InnerValue::into_public)
