@@ -214,20 +214,25 @@ mod test {
     #[test]
     fn test_range_list_parsing() {
         let cases = vec![
-            ("[1, 10]", Ok(Literal::Range(RangeLiteral { start: 1, end: 10, step: None }))),
-            ("[1, 10, 2]", Ok(Literal::Range(RangeLiteral { start: 1, end: 10, step: Some(2) }))),
-            ("[5, 5]", Ok(Literal::Range(RangeLiteral { start: 5, end: 5, step: None }))),
-            ("[10, 1]", Ok(Literal::Range(RangeLiteral { start: 10, end: 1, step: None }))),
-            ("[1, 10, -1]", Ok(Literal::Range(RangeLiteral { start: 1, end: 10, step: Some(-1) }))),
-            ("[1]", Err(())),                     // Incomplete range
-            ("[1, 2, 3, 4]", Err(())),            // Too many elements
-            ("[a, b]", Err(())),                  // Invalid integers
+            ("[1, 10]", Ok((1, 10, None))),
+            ("[1, 10, 2]", Ok((1, 10, Some(2)))),
+            ("[5, 5]", Ok((5, 5, None))),
+            ("[10, 1]", Ok((10, 1, None))),
+            ("[1, 10, -1]", Ok((1, 10, Some(-1)))),
+            ("[1]", Err(())),          // Incomplete range
+            ("[1, 2, 3, 4]", Err(())), // Too many elements
+            ("[a, b]", Err(())),       // Invalid integers
         ];
 
         for (input, expected) in cases {
             let result = range_list_parser().parse(input).into_result();
             match (&result, expected) {
-                (Ok(val), Ok(exp)) => assert_eq!(*val, exp, "Input: {}", input),
+                (Ok(val), Ok((start, end, step))) => assert_eq!(
+                    *val,
+                    Literal::Range(RangeLiteral { start, end, step }),
+                    "Input: {}",
+                    input
+                ),
                 (Err(_), Err(())) => {} // Expected error
                 _ => panic!("Unexpected result for input {}: {:?}", input, result),
             }
