@@ -9,6 +9,26 @@ type ParserInput<'a> = &'a str;
 type ParserError<'a> = extra::Err<Rich<'a, char>>;
 
 /// Parse a RollKit expression from a string input.
+/// 
+/// # Examples
+/// 
+/// ```
+/// # use rollkit::{parse, parsing::*};
+/// assert_eq!(parse("2d6 + 3"), Ok(Expr::BinaryOp {
+///     left: Box::new(Expr::BinaryOp {
+///         left: Box::new(Expr::Literal(Literal::Int(2))),
+///         op: BinaryOperator::DiceRoll,
+///         right: Box::new(Expr::Literal(Literal::Int(6))),
+///     }),
+///     op: BinaryOperator::Addition,
+///     right: Box::new(Expr::Literal(Literal::Int(3))),
+/// }));
+/// 
+/// assert!(parse("4d{1,2,3}kh2").is_ok());
+/// assert!(parse("[1, 10, 2] + 5").is_ok());
+/// assert!(parse("max(3d6)").is_ok());
+/// assert!(parse("1+").is_err());
+/// ```
 pub fn parse(input: &str) -> Result<Expr, Vec<Rich<'_, char>>> {
     parser().parse(input).into_result()
 }

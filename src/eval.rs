@@ -1,3 +1,5 @@
+use std::fmt;
+
 use rand::{
     Rng, rng,
     seq::{IndexedRandom, SliceRandom},
@@ -5,13 +7,156 @@ use rand::{
 
 use crate::ast::{BinaryOperator, Expr, ExprVisitor, Literal};
 
-/// The value returned by the evaluator.
-#[derive(Debug, Clone)]
+/// The result of evaluating a [RollKit expression](Expr).
+///
+/// A Value can be either an integer or a list of integers. It can be created by evaluation
+/// functions ([`eval`], [`eval_with`]), and can be converted to lists
+/// ([`into_list`](Value::into_list)) or integers ([`sum`](Value::sum)). [`i64`] is used as the
+/// underlying integer type.
+/// 
+/// # Examples
+/// 
+/// ```
+/// # use rollkit::{eval, parse, Value};
+/// // an expression that results in a list
+/// let expr_list = parse("3d6").unwrap();
+/// // an expression that results in an integer
+/// let expr_int = parse("5 + 10").unwrap();
+/// 
+/// let value_list = eval(&expr_list).unwrap();
+/// let value_int = eval(&expr_int).unwrap();
+/// 
+/// assert!(value_list.is_list());
+/// assert!(value_int.is_integer());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
-    /// An integer value.
+    /// An integer.
     Integer(i64),
-    /// A list value.
+    /// A list of integers.
     List(Vec<i64>),
+}
+
+impl Value {
+    /// Returns `true` if the value is an integer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use rollkit::Value;
+    /// let int_value = Value::Integer(5);
+    /// let list_value = Value::List(vec![1, 2, 3]);
+    ///
+    /// assert!(int_value.is_integer());
+    /// assert!(!list_value.is_integer());
+    /// ```
+    pub fn is_integer(&self) -> bool {
+        matches!(self, Value::Integer(_))
+    }
+
+    /// Returns `true` if the value is a list.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use rollkit::Value;
+    /// let int_value = Value::Integer(5);
+    /// let list_value = Value::List(vec![1, 2, 3]);
+    ///
+    /// assert!(!int_value.is_list());
+    /// assert!(list_value.is_list());
+    /// ```
+    pub fn is_list(&self) -> bool {
+        matches!(self, Value::List(_))
+    }
+
+    /// Converts the value into a list. If it's an integer, it returns a single-element list
+    /// containing that integer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use rollkit::Value;
+    /// let int_value = Value::Integer(5);
+    /// let list_value = Value::List(vec![1, 2, 3]);
+    ///
+    /// assert_eq!(int_value.into_list(), vec![5]);
+    /// assert_eq!(list_value.into_list(), vec![1, 2, 3]);
+    /// ```
+    pub fn into_list(self) -> Vec<i64> {
+        match self {
+            Value::List(lst) => lst,
+            Value::Integer(i) => vec![i],
+        }
+    }
+
+    /// Gets the sum of all elements in the value. If it's an integer, it returns that integer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use rollkit::Value;
+    /// let int_value = Value::Integer(5);
+    /// let list_value = Value::List(vec![1, 2, 3]);
+    ///
+    /// assert_eq!(int_value.sum(), 5);
+    /// assert_eq!(list_value.sum(), 6);
+    /// ```
+    pub fn sum(&self) -> i64 {
+        match self {
+            Value::Integer(i) => *i,
+            Value::List(lst) => lst.iter().sum(),
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    /// Formats the value for display. For integers, it displays the integer. For lists, it displays
+    /// the list in curly braces.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// # use rollkit::Value;
+    /// let int_value = Value::Integer(5);
+    /// let list_value = Value::List(vec![1, 2, 3]);
+    /// 
+    /// assert_eq!(format!("{}", int_value), "5");
+    /// assert_eq!(format!("{}", list_value), "{1, 2, 3}");
+    /// ```
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Integer(i) => write!(f, "{}", i),
+            Value::List(lst) => {
+                write!(f, "{{")?;
+                let mut first = true;
+                for n in lst {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", n)?;
+                    first = false;
+                }
+                write!(f, "}}")
+            }
+        }
+    }
+}
+
+/// Returns an iterator over the range defined by start, end, and step.
+pub fn range_to_iter(start: i64, end: i64, step: Option<i64>) -> impl Iterator<Item = i64> {
+    let inc = end >= start;
+    let step = step.map(i64::wrapping_abs).unwrap_or(1);
+    let step = if inc { step } else { step.wrapping_neg() };
+
+    std::iter::successors(Some(start), move |&cur| {
+        let next = cur.wrapping_add(step);
+        if (inc && (next > end || next < cur)) || (!inc && (next < end || next > cur)) {
+            None
+        } else {
+            Some(next)
+        }
+    })
 }
 
 /// The internal representation of a list, which can be either a concrete list of integers
@@ -29,27 +174,11 @@ pub enum ListInner {
 }
 
 impl ListInner {
-    /// Returns an iterator over the range defined by start, end, and step.
-    fn iter_range(start: i64, end: i64, step: Option<i64>) -> impl Iterator<Item = i64> {
-        let inc = end >= start;
-        let step = step.map(i64::wrapping_abs).unwrap_or(1);
-        let step = if inc { step } else { step.wrapping_neg() };
-
-        std::iter::successors(Some(start), move |&cur| {
-            let next = cur.wrapping_add(step);
-            if (inc && (next > end || next < cur)) || (!inc && (next < end || next > cur)) {
-                None
-            } else {
-                Some(next)
-            }
-        })
-    }
-
     /// Returns the sum of all elements in the list.
     pub fn sum(&self) -> i64 {
         match self {
             ListInner::List(lst) => lst.iter().sum(),
-            ListInner::Range { start, end, step } => Self::iter_range(*start, *end, *step).sum(),
+            ListInner::Range { start, end, step } => range_to_iter(*start, *end, *step).sum(),
         }
     }
 
@@ -62,7 +191,7 @@ impl ListInner {
     pub fn into_vec(self) -> Vec<i64> {
         match self {
             ListInner::List(lst) => lst,
-            ListInner::Range { start, end, step } => Self::iter_range(start, end, step).collect(),
+            ListInner::Range { start, end, step } => range_to_iter(start, end, step).collect(),
         }
     }
 
@@ -158,6 +287,53 @@ pub enum EvalError {
     DropTooLess { requested: i64 },
     /// The lengths of two lists did not match.
     ListMismatch { left_len: usize, right_len: usize },
+}
+
+impl fmt::Display for EvalError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EvalError::IntegerExpected => write!(f, "Expected an integer, but got a list"),
+            EvalError::ListExpected => write!(f, "Expected a list, but got an integer"),
+            EvalError::KeepTooMany {
+                available,
+                requested,
+            } => write!(
+                f,
+                "Cannot keep {} elements from a list of {} elements",
+                requested, available
+            ),
+            EvalError::DropTooMany {
+                available,
+                requested,
+            } => write!(
+                f,
+                "Cannot drop {} elements from a list of {} elements",
+                requested, available
+            ),
+            EvalError::KeepTooLess { requested } => {
+                write!(
+                    f,
+                    "Cannot keep {} elements (must be non-negative)",
+                    requested
+                )
+            }
+            EvalError::DropTooLess { requested } => {
+                write!(
+                    f,
+                    "Cannot drop {} elements (must be non-negative)",
+                    requested
+                )
+            }
+            EvalError::ListMismatch {
+                left_len,
+                right_len,
+            } => write!(
+                f,
+                "List length mismatch: left has {} elements, right has {} elements",
+                left_len, right_len
+            ),
+        }
+    }
 }
 
 /// The evaluator visitor that traverses the AST and computes the result.
@@ -361,12 +537,12 @@ where
     }
 }
 
-/// Evaluates an expression and returns the result.
+/// Evaluates a RollKit expression and returns the result.
 pub fn eval(expr: &Expr) -> Result<Value, EvalError> {
     eval_with(expr, &mut rng())
 }
 
-/// Evaluates an expression using the provided random number generator and returns the result.
+/// Evaluates a RollKit expression with a provided random number generator and returns the result.
 pub fn eval_with<R: Rng + ?Sized>(expr: &Expr, rng: &mut R) -> Result<Value, EvalError> {
     let mut visitor = EvalVisitor { rng };
     visitor.visit_expr(expr).map(InnerValue::into_public)

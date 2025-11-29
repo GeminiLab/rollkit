@@ -16,78 +16,43 @@ use explain::explain_expr;
 // Yellow - results
 
 /// Report parse errors using ariadne
-fn report_parse_errors(input: &str, errors: Vec<chumsky::error::Rich<'_, char>>) {
+fn report_parse_errors(seq: usize, input: &str, errors: Vec<chumsky::error::Rich<'_, char>>) {
     for error in errors {
         let span = error.span();
         let msg = error.to_string();
 
-        Report::build(ReportKind::Error, span.into_range())
+        Report::build(ReportKind::Error, ("<stdin>", span.into_range()))
             .with_message("Parse Error")
             .with_label(
-                Label::new(span.start..span.end)
+                Label::new(("<stdin>", span.start..span.end))
                     .with_message(msg)
                     .with_color(Color::Red),
             )
             .finish()
-            .print(Source::from(input))
+            .print((
+                "<stdin>",
+                Source::from(input).with_display_line_offset(seq.saturating_sub(1)),
+            ))
             .unwrap();
     }
 }
 
 /// Report evaluation errors using ariadne
-fn report_eval_error(input: &str, error: EvalError) {
-    let msg = match error {
-        EvalError::IntegerExpected => "Expected an integer, but got a list",
-        EvalError::ListExpected => "Expected a list, but got an integer",
-        EvalError::KeepTooMany {
-            available,
-            requested,
-        } => {
-            println!(
-                "Cannot keep {} elements from a list of {} elements",
-                requested, available
-            );
-            return;
-        }
-        EvalError::DropTooMany {
-            available,
-            requested,
-        } => {
-            println!(
-                "Cannot drop {} elements from a list of {} elements",
-                requested, available
-            );
-            return;
-        }
-        EvalError::KeepTooLess { requested } => {
-            println!("Cannot keep {} elements (must be non-negative)", requested);
-            return;
-        }
-        EvalError::DropTooLess { requested } => {
-            println!("Cannot drop {} elements (must be non-negative)", requested);
-            return;
-        }
-        EvalError::ListMismatch {
-            left_len,
-            right_len,
-        } => {
-            println!(
-                "List length mismatch: left has {} elements, right has {} elements",
-                left_len, right_len
-            );
-            return;
-        }
-    };
+fn report_eval_error(seq: usize, input: &str, error: EvalError) {
+    let msg = error.to_string();
 
-    Report::build(ReportKind::Error, 0..input.len())
+    Report::build(ReportKind::Error, ("<stdin>", 0..input.len()))
         .with_message("Evaluation Error")
         .with_label(
-            Label::new(0..input.len())
+            Label::new(("<stdin>", 0..input.len()))
                 .with_message(msg)
                 .with_color(Color::Red),
         )
         .finish()
-        .print(Source::from(input))
+        .print((
+            "<stdin>",
+            Source::from(input).with_display_line_offset(seq.saturating_sub(1)),
+        ))
         .unwrap();
 }
 
@@ -111,40 +76,69 @@ fn format_expr_result(value: &Value) -> String {
     }
 }
 
-/// Print help message
-fn print_help() {
+fn print_welcome() {
     println!(
-        "\n{}",
+        "{}",
         "RollKit REPL - Interactive Dice Expression Evaluator".cyan()
     );
     println!(
         "{}",
-        "================================================".cyan()
+        "====================================================".cyan()
+    );
+    println!("Type {} for help\n", ":help".green());
+}
+
+/// Print help message
+fn print_help() {
+    println!(
+        "\n{}\n  Enter {} to evaluate them or {} for other functions",
+        "Usage:".yellow(),
+        "dice expressions".magenta(),
+        "commands".green()
     );
     println!("\n{}:", "Commands".yellow());
-    println!("  {}  - Show this help message", ":help".green());
     println!(
-        "  {}  - Explain the structure of an expression",
-        ":explain <expr>".green()
+        "  {} or {}                   - Show this help message",
+        ":h[elp]".green(),
+        ":?".green()
     );
-    println!("  {}  - Exit the REPL", ":exit or :quit".green());
-    println!("\n{}:", "Keyboard Shortcuts".yellow());
-    println!("  {}  - Exit the REPL", "Ctrl+D".green());
-    println!("  {}  - Cancel current input", "Ctrl+C".green());
-    println!("  {}  - Navigate command history", "Up/Down arrows".green());
-    println!("  {}  - Edit current line", "Left/Right arrows".green());
-    println!("\n{}:", "Examples".yellow());
-    println!("  {}  - Roll 3 six-sided dice", "3d6".magenta());
-    println!("  {}  - Roll 4d6, keep highest 3", "4d6kh3".magenta());
-    println!("  {}  - Roll 2d6 and add 5", "2d6 + 5".magenta());
-    println!("  {}  - Roll dice from a list", "2d{1,2,3,5,8}".magenta());
     println!(
-        "  {}  - Use a range [start, end, step]",
+        "  {} {} or {} {}  - Explain the structure of an expression",
+        ":ex[plain]".green(),
+        "<expr>".magenta(),
+        ":!".green(),
+        "<expr>".magenta()
+    );
+    println!(
+        "  {} or {}                - Exit the REPL",
+        ":exit".green(),
+        ":q[uit]".green()
+    );
+    println!("\n{}:", "Examples".yellow());
+    println!(
+        "  {}                  - Roll 3 six-sided dice",
+        "3d6".magenta()
+    );
+    println!(
+        "  {}               - Roll 4d6, keep highest 3",
+        "4d6kh3".magenta()
+    );
+    println!(
+        "  {}              - Roll 2d6 and add 5",
+        "2d6 + 5".magenta()
+    );
+    println!(
+        "  {}        - Roll dice from a list",
+        "2d{1,2,3,5,8}".magenta()
+    );
+    println!(
+        "  {}           - Use a range [start, end, step]",
         "[1, 10, 2]".magenta()
     );
     println!(
-        "  {}  - Explain an expression structure",
-        ":explain 4d6kh3 + 2".magenta()
+        "  {} {}  - Explain an expression structure",
+        ":explain".green(),
+        "4d6kh3 + 2".magenta()
     );
     println!();
 }
@@ -165,7 +159,7 @@ fn eval_expr(seq: usize, expr: &str, with_explain: bool) {
                     );
                 }
                 Err(e) => {
-                    report_eval_error(expr, e);
+                    report_eval_error(seq, expr, e);
                 }
             }
 
@@ -177,7 +171,7 @@ fn eval_expr(seq: usize, expr: &str, with_explain: bool) {
             }
         }
         Err(errors) => {
-            report_parse_errors(expr, errors);
+            report_parse_errors(seq, expr, errors);
         }
     }
 }
@@ -185,14 +179,14 @@ fn eval_expr(seq: usize, expr: &str, with_explain: bool) {
 /// Process a command, return true to exit REPL.
 fn process_command(seq: usize, command: &str, args: &str) -> bool {
     match command {
-        "help" | "h" => {
+        "help" | "h" | "?" => {
             print_help();
         }
         "exit" | "quit" | "q" => {
             println!("{}", "Goodbye!".yellow());
             return true;
         }
-        "explain" | "ex" => {
+        "explain" | "ex" | "!" => {
             if args.is_empty() {
                 print_err("No expression provided to explain");
             } else {
@@ -229,7 +223,7 @@ fn prompt(seq: usize) -> String {
 }
 
 fn main() {
-    print_help();
+    print_welcome();
 
     // Create a rustyline editor with history support
     let mut rl = DefaultEditor::new().expect("Failed to create readline editor");

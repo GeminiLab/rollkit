@@ -1,7 +1,7 @@
 use core::fmt;
 
 /// A literal value in the RollKit expression AST.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Literal {
     /// An integer literal.
     Int(i64),
@@ -120,8 +120,30 @@ impl fmt::Display for BinaryOperator {
     }
 }
 
-/// An expression in the RollKit expression AST.
-#[derive(Debug, Clone)]
+/// A RollKit expression.
+/// 
+/// It's an AST node representing one of the possible expressions types in RollKit: literals,
+/// binary operations, function calls, and strong lists.
+/// 
+/// # Creation
+/// 
+/// [`Expr`]s are typically created by [parsing](crate::parse) RollKit expressions from strings.
+/// They can (naturally) also be constructed manually.
+/// 
+/// # Usage
+/// 
+/// Expressions can be evaluated using the evaluation functions ([`eval`](crate::eval) and 
+/// [`eval_with`](crate::eval_with)) or traversed using the [visitor pattern](ExprVisitor).
+/// 
+/// # Example
+/// 
+/// ```
+/// # use rollkit::{parsing::Expr, parse, eval};
+/// let expr: Expr = parse("2d6 + 3").unwrap();
+/// let result = eval(&expr).unwrap();
+/// assert!(matches!(result, rollkit::Value::Integer(n) if n >= 5 && n <= 15));
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
     /// The expression is a literal value.
     Literal(Literal),
@@ -146,15 +168,36 @@ pub enum Expr {
 }
 
 impl Expr {
-    /// Formats this RollKit expression in a single line.
+    /// Formats this RollKit expression in a single line, with parentheses to indicate precedence.
+    /// 
+    /// This is a wrapper around the [InlineFormatter](crate::parsing::InlineFormatter).
+    /// 
+    /// # Example
+    ///
+    /// ```
+    /// # use rollkit::{parsing::{ExprVisitor, InlineFormatter}, parse};
+    /// let expr = parse("2d6 + 3").unwrap();
+    /// let formatted = expr.format_inline();
+    /// assert_eq!(formatted, "((2 d 6) + 3)");
+    /// ```
     pub fn format_inline(&self) -> String {
         let mut formatter = InlineFormatter;
         formatter.visit_expr(self)
     }
 }
 
-/// A visitor for traversing RollKit expressions ASTs and returning a value.
+/// Trait for visitors traversing RollKit expressions using the visitor pattern.
+/// 
+/// # Example
+/// ```
+/// # use rollkit::{parsing::{ExprVisitor, InlineFormatter}, parse};
+/// let expr = parse("2d6 + 3").unwrap();
+/// let mut formatter = InlineFormatter;
+/// let formatted = ExprVisitor::visit_expr(&mut formatter, &expr);
+/// assert_eq!(formatted, "((2 d 6) + 3)");
+/// ```
 pub trait ExprVisitor {
+    /// The output type of the visitor.
     type Output;
 
     /// Visits a literal.
@@ -177,7 +220,18 @@ pub trait ExprVisitor {
     }
 }
 
-/// A formatter that formats RollKit expressions in a single line.
+/// A formatter that formats RollKit expressions in a single line, with parentheses to indicate
+/// precedence.
+/// 
+/// # Example
+/// 
+/// ```
+/// # use rollkit::{parsing::{ExprVisitor, InlineFormatter}, parse};
+/// let expr = parse("2d6 + 3").unwrap();
+/// let mut formatter = InlineFormatter;
+/// let formatted = formatter.visit_expr(&expr);
+/// assert_eq!(formatted, "((2 d 6) + 3)");
+/// ```
 pub struct InlineFormatter;
 
 impl ExprVisitor for InlineFormatter {

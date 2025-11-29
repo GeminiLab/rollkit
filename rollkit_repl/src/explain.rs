@@ -1,4 +1,4 @@
-use rollkit::{Value, eval, parsing::{BinaryOperator, Expr, ExprVisitor, Literal}};
+use rollkit::parsing::{BinaryOperator, Expr, ExprVisitor, Literal, range_to_iter};
 use yansi::Paint;
 
 /// Visitor that explains the structure of an expression
@@ -51,15 +51,7 @@ impl ExprVisitor for ExplainVisitor {
                 )
             }
             Literal::Range { start, end, step } => {
-                let v = eval(&Expr::Literal(Literal::Range {
-                    start: *start,
-                    end: *end,
-                    step: *step,
-                })).unwrap();
-                let count = match v {
-                    Value::List(lst) => lst.len(),
-                    _ => 0,
-                };
+                let count = range_to_iter(*start, *end, *step).count();
                 let repr = format!(
                     "{}, {}{}",
                     start,
