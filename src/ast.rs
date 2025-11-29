@@ -349,3 +349,31 @@ impl ExprVisitor for InlineFormatter {
         format!("{{{}}}", self.visit_expr(expr))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use core::i64;
+
+    use super::*;
+
+    #[test]
+    fn test_range_literal() {
+        fn check_range(start: i64, end: i64, step: Option<i64>, expected: Vec<i64>) {
+            let range = RangeLiteral { start, end, step };
+            let result: Vec<i64> = range.to_iter().collect();
+            assert_eq!(result, expected);
+        }
+
+        check_range(1, 5, Some(2), vec![1, 3, 5]);
+        check_range(5, 1, Some(2), vec![5, 3, 1]);
+        check_range(1, 5, None, vec![1, 2, 3, 4, 5]);
+        check_range(5, 1, None, vec![5, 4, 3, 2, 1]);
+        check_range(1, 10, Some(-4), vec![1, 5, 9]);
+        check_range(10, 1, Some(4), vec![10, 6, 2]);
+        check_range(1, 1, Some(100), vec![1]);
+        check_range(0, i64::MAX, Some(i64::MAX), vec![0, i64::MAX]);
+        check_range(0, i64::MIN, Some(i64::MAX), vec![0, i64::MIN + 1]);
+        check_range(i64::MAX - 1, i64::MAX, None, vec![i64::MAX - 1, i64::MAX]);
+        check_range(i64::MAX - 1, i64::MAX, Some(i64::MAX), vec![i64::MAX - 1]);
+    }
+}

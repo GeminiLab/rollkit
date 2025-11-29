@@ -198,10 +198,34 @@ mod test {
             ("-9223372036854775808", Ok(-9223372036854775808)),
             ("9223372036854775808", Err(())),  // Overflow
             ("-9223372036854775809", Err(())), // Underflow
+            ("99999999999999999999", Err(())), // Overflow
         ];
 
         for (input, expected) in cases {
             let result = integer_parser().parse(input).into_result();
+            match (&result, expected) {
+                (Ok(val), Ok(exp)) => assert_eq!(*val, exp, "Input: {}", input),
+                (Err(_), Err(())) => {} // Expected error
+                _ => panic!("Unexpected result for input {}: {:?}", input, result),
+            }
+        }
+    }
+
+    #[test]
+    fn test_range_list_parsing() {
+        let cases = vec![
+            ("[1, 10]", Ok(Literal::Range(RangeLiteral { start: 1, end: 10, step: None }))),
+            ("[1, 10, 2]", Ok(Literal::Range(RangeLiteral { start: 1, end: 10, step: Some(2) }))),
+            ("[5, 5]", Ok(Literal::Range(RangeLiteral { start: 5, end: 5, step: None }))),
+            ("[10, 1]", Ok(Literal::Range(RangeLiteral { start: 10, end: 1, step: None }))),
+            ("[1, 10, -1]", Ok(Literal::Range(RangeLiteral { start: 1, end: 10, step: Some(-1) }))),
+            ("[1]", Err(())),                     // Incomplete range
+            ("[1, 2, 3, 4]", Err(())),            // Too many elements
+            ("[a, b]", Err(())),                  // Invalid integers
+        ];
+
+        for (input, expected) in cases {
+            let result = range_list_parser().parse(input).into_result();
             match (&result, expected) {
                 (Ok(val), Ok(exp)) => assert_eq!(*val, exp, "Input: {}", input),
                 (Err(_), Err(())) => {} // Expected error
